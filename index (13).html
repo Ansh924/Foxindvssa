@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Anshit Singh Live HLS Player</title>
+  <meta name="theme-color" content="#0ea5e9" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13"></script>
+  <style>
+    .range {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      background: transparent;
+      height: 14px;
+    }
+    .range:focus { outline: none; }
+    .range::-webkit-slider-runnable-track { height: 4px; background: transparent; border-radius: 9999px; }
+    .range::-moz-range-track { height: 4px; background: transparent; border-radius: 9999px; }
+    .range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: white; border: 2px solid #0ea5e9; margin-top: -5px; }
+    .range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: white; border: 2px solid #0ea5e9; }
+
+    .controls-hidden { opacity: 0; pointer-events: none; transform: translateY(8px); }
+    .controls-visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+    .control-gradient { background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.5) 40%, rgba(0,0,0,.75) 100%); }
+    .quality-menu { backdrop-filter: blur(8px); }
+  </style>
+</head>
+<body class="bg-neutral-950 text-white min-h-screen">
+  <div class="min-h-screen flex flex-col">
+    <header class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-gradient-to-b from-black/40 to-transparent">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-sky-500 to-fuchsia-500 grid place-items-center font-bold">AS</div>
+        <div>
+          <h1 class="text-lg font-semibold leading-tight">Anshit Singh</h1>
+          <p class="text-xs text-white/60 -mt-0.5">Live HLS Player</p>
+        </div>
+      </div>
+      <div class="hidden sm:flex items-center gap-2 text-xs text-white/70">
+        <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/10">
+          <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+          Ready
+        </span>
+        <a href="#" class="px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition">Help</a>
+      </div>
+    </header>
+
+    <main class="flex-1 grid place-items-center px-4 py-6">
+      <div id="playerWrapper" class="w-full max-w-6xl aspect-video relative rounded-2xl overflow-hidden shadow-2xl bg-black">
+        <video id="video" class="w-full h-full object-contain bg-black" playsinline preload="auto" crossorigin="anonymous"></video>
+
+        <div id="spinner" class="absolute inset-0 grid place-items-center">
+          <div class="w-12 h-12 border-4 border-white/20 border-t-sky-400 rounded-full animate-spin"></div>
+        </div>
+
+        <div class="absolute top-0 left-0 right-0 p-4 flex items-center justify-between pointer-events-none">
+          <div class="flex items-center gap-2 pointer-events-auto">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-sky-500 to-fuchsia-500 grid place-items-center text-xs font-bold">AS</div>
+            <span class="text-sm font-medium">Anshit Singh</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="liveBadge" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-600/90">LIVE</span>
+            <span id="latency" class="px-2 py-1 rounded-full text-[11px] bg-white/10 text-white/80">0.0s</span>
+          </div>
+        </div>
+
+        <div id="controls" class="absolute inset-x-0 bottom-0 p-4 control-gradient transition-all duration-300 controls-visible">
+          <div class="w-full mb-3">
+            <div class="relative h-6 flex items-center">
+              <div class="absolute left-0 right-0 h-1 rounded-full bg-white/10"></div>
+              <div id="bufferedBar" class="absolute left-0 h-1 rounded-full bg-white/30" style="width:0%"></div>
+              <div id="playedBar" class="absolute left-0 h-1 rounded-full bg-sky-500" style="width:0%"></div>
+              <input id="seek" type="range" min="0" max="100" value="0" step="0.01" class="range relative z-10">
+            </div>
+            <div class="flex items-center justify-between text-xs text-white/70 mt-1">
+              <div class="flex items-center gap-2">
+                <span id="dvrLabel" class="px-2 py-0.5 rounded bg-white/10">-0.0s from live</span>
+                <button id="goLive" class="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-semibold text-xs hidden">Go Live</button>
+              </div>
+              <span id="windowLabel" class="text-white/60">DVR window: --</span>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 sm:gap-3">
+              <button id="playPause" class="p-2 rounded-full bg-white/10 hover:bg-white/20">
+                <svg id="iconPlay" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <svg id="iconPause" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+              </button>
+              <button id="mute" class="p-2 rounded-full bg-white/10 hover:bg-white/20">
+                <svg id="iconVolume" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M11 5l-5 4H3v6h3l5 4z"/><path d="M15.54 8.46a5 5 0 010 7.07" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <svg id="iconMuted" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M11 5l-5 4H3v6h3l5 4z"/><path d="M16 9l6 6m0-6l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </button>
+              <div class="hidden sm:flex items-center gap-2 w-28">
+                <input id="volume" type="range" min="0" max="1" step="0.01" class="range">
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+              <div id="qualityContainer" class="relative">
+                <button id="qualityBtn" class="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v8m4-4H8"/></svg>
+                  <span id="qualityLabel" class="text-sm">Auto</span>
+                </button>
+                <div id="qualityMenu" class="quality-menu absolute right-0 bottom-12 w-44 bg-black/70 border border-white/10 rounded-lg shadow-xl hidden">
+                  <div class="p-2 text-xs text-white/60">Quality</div>
+                  <div id="qualityList" class="max-h-60 overflow-auto py-1"></div>
+                </div>
+              </div>
+
+              <button id="pipBtn" class="p-2 rounded-full bg-white/10 hover:bg-white/20" title="Picture-in-Picture">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v6h-2V5H5v14h6v2H5a2 2 0 01-2-2V5z"/><path d="M13 13h8v6h-8z"/></svg>
+              </button>
+              <button id="fullscreen" class="p-2 rounded-full bg-white/10 hover:bg-white/20" title="Fullscreen">
+                <svg id="iconEnterFs" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm12 5h-5v-2h3v-3h2v5zM7 7h3V5H5v5h2V7zm12 0v3h-2V5h-5v2h3v3h2V7z"/></svg>
+                <svg id="iconExitFs" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M9 7H7v4h4V9H9zm8 0h-2v2h-2v2h4V7zM7 15h2v-2h2v-2H7v4zm10-2h-2v2h-2v2h4v-4z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button id="bigPlay" class="absolute inset-0 grid place-items-center text-white/90">
+          <span class="p-5 rounded-full bg-black/40 backdrop-blur border border-white/20 hover:bg-black/50 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </button>
+      </div>
+    </main>
+
+    <footer class="px-4 py-4 text-center text-sm text-white/50 border-t border-white/10">
+      © <span id="year"></span> Anshit Singh. Built with HLS.js.
+    </footer>
+  </div>
+
+  <script>
+    (function(){
+      const source = "https://iplislive.pages.dev/chut-teri-ma-ki.m3u8";
+      const video = document.getElementById('video');
+      const spinner = document.getElementById('spinner');
+      const playPause = document.getElementById('playPause');
+      const iconPlay = document.getElementById('iconPlay');
+      const iconPause = document.getElementById('iconPause');
+      const bigPlay = document.getElementById('bigPlay');
+      const muteBtn = document.getElementById('mute');
+      const iconVol = document.getElementById('iconVolume');
+      const iconMuted = document.getElementById('iconMuted');
+      const volume = document.getElementById('volume');
+      const seek = document.getElementById('seek');
+      const playedBar = document.getElementById('playedBar');
+      const bufferedBar = document.getElementById('bufferedBar');
+      const liveBadge = document.getElementById('liveBadge');
+      const latencyEl = document.getElementById('latency');
+      const dvrLabel = document.getElementById('dvrLabel');
+      const windowLabel = document.getElementById('windowLabel');
+      const goLiveBtn = document.getElementById('goLive');
+      const pipBtn = document.getElementById('pipBtn');
+      const fsBtn = document.getElementById('fullscreen');
+      const iconEnterFs = document.getElementById('iconEnterFs');
+      const iconExitFs = document.getElementById('iconExitFs');
+      const controls = document.getElementById('controls');
+      const qualityBtn = document.getElementById('qualityBtn');
+      const qualityMenu = document.getElementById('qualityMenu');
+      const qualityList = document.getElementById('qualityList');
+      const qualityLabel = document.getElementById('qualityLabel');
+      const playerWrapper = document.getElementById('playerWrapper');
+
+      document.getElementById('year').textContent = new Date().getFullYear();
+
+      let hls;
+      let isNativeHls = video.canPlayType('application/vnd.apple.mpegurl');
+      let seeking = false;
+      let controlsTimer = null;
+      let menuOpen = false;
+
+      function showSpinner(show) { spinner.style.display = show ? 'grid' : 'none'; }
+
+      function formatSeconds(s) {
+        if (!isFinite(s)) return '--';
+        const sign = s < 0 ? '-' : '';
+        s = Math.abs(s);
+        if (s < 60) return sign + s.toFixed(1) + 's';
+        const m = Math.floor(s/60), sec = Math.floor(s % 60);
+        return `${sign}${m}:${sec.toString().padStart(2,'0')}`;
+      }
+
+      function updatePlayIcons() {
+        const playing = !video.paused && !video.ended;
+        iconPlay.classList.toggle('hidden', playing);
+        iconPause.classList.toggle('hidden', !playing);
+        bigPlay.style.display = playing ? 'none' : 'grid';
+      }
+
+      function updateMuteIcons() {
+        const muted = video.muted || video.volume === 0;
+        iconVol.classList.toggle('hidden', muted);
+        iconMuted.classList.toggle('hidden', !muted);
+      }
+
+      function getSeekable() {
+        if (video.seekable && video.seekable.length) {
+          return { start: video.seekable.start(0), end: video.seekable.end(0) };
+        }
+        return { start: 0, end: video.duration || 0 };
+      }
+
+      function nearLiveEdge() {
+        const lag = liveLag();
+        return lag <= 2;
+      }
+
+      function liveLag() {
+        try {
+          if (hls && typeof hls.latency === 'number') return hls.latency;
+        } catch(e){}
+        let end = 0;
+        if (hls && typeof hls.liveSyncPosition === 'number') {
+          end = hls.liveSyncPosition;
+        } else {
+          const sk = getSeekable();
+          end = sk.end || 0;
+        }
+        return Math.max(0, end - video.currentTime);
+      }
+
+      function updateTimeline() {
+        const sk = getSeekable();
+        const window = Math.max(0, sk.end - sk.start);
+        const pos = Math.max(0, Math.min(window, video.currentTime - sk.start));
+        const percent = window ? (pos / window) * 100 : 0;
+        seek.max = window || 100;
+        seek.value = pos;
+        playedBar.style.width = `${percent}%`;
+
+        let bufferedEnd = video.currentTime;
+        const buf = video.buffered;
+        for (let i=0;i<buf.length;i++){
+          const start = buf.start(i), end = buf.end(i);
+          if (end >= video.currentTime && start <= video.currentTime) {
+            bufferedEnd = end; break;
+          }
+        }
+        const bufPos = Math.max(0, Math.min(window, bufferedEnd - sk.start));
+        const bufPercent = window ? (bufPos / window) * 100 : 0;
+        bufferedBar.style.width = `${bufPercent}%`;
+
+        const lag = liveLag();
+        latencyEl.textContent = `${lag.toFixed(1)}s`;
+        dvrLabel.textContent = `-${lag.toFixed(1)}s from live`;
+        windowLabel.textContent = window ? `DVR window: ${formatSeconds(window)}` : 'DVR window: --';
+
+        const atLive = nearLiveEdge();
+        liveBadge.className = `px-2.5 py-1 rounded-full text-xs font-semibold ${atLive ? 'bg-red-600/90' : 'bg-gray-500/70'}`;
+        goLiveBtn.classList.toggle('hidden', atLive);
+      }
+
+      function seekTo(val) {
+        const sk = getSeekable();
+        const target = Math.min(sk.end, Math.max(sk.start, sk.start + Number(val)));
+        video.currentTime = target;
+      }
+
+      function hideControlsSoon() {
+        if (document.fullscreenElement == null && window.innerWidth < 768) {
+          controls.classList.remove('controls-hidden'); 
+          controls.classList.add('controls-visible');
+          return;
+        }
+        clearTimeout(controlsTimer);
+        controls.classList.remove('controls-hidden');
+        controls.classList.add('controls-visible');
+        controlsTimer = setTimeout(() => {
+          if (!menuOpen && !video.paused && !seeking) {
+            controls.classList.add('controls-hidden');
+            controls.classList.remove('controls-visible');
+          }
+        }, 3500);
+      }
+
+      function toggleFullscreen() {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          if (playerWrapper.requestFullscreen) {
+            playerWrapper.requestFullscreen();
+          } else if (video.webkitEnterFullscreen) {
+            video.webkitEnterFullscreen();
+          }
+        }
+      }
+
+      function setQualityLabelAuto() { qualityLabel.textContent = 'Auto'; }
+      function setQualityLabelFromLevel(level) {
+        if (!level) return setQualityLabelAuto();
+        const height = level.height || '';
+        const fps = level.frameRate ? `${Math.round(level.frameRate)}fps` : '';
+        const bw = level.bitrate ? `${Math.round(level.bitrate/1000)} kbps` : '';
+        const parts = [`${height}p`, fps, bw].filter(Boolean);
+        qualityLabel.textContent = parts.join(' ');
+      }
+
+      async function init() {
+        showSpinner(true);
+
+        const savedVol = localStorage.getItem('as_vol');
+        if (savedVol !== null) {
+          video.volume = parseFloat(savedVol);
+          volume.value = video.volume;
+        } else {
+          video.volume = 0.8; volume.value = 0.8;
+        }
+        updateMuteIcons();
+
+        if (Hls.isSupported()) {
+          hls = new Hls({
+            lowLatencyMode: true,
+            maxLiveSyncPlaybackRate: 1.0,
+            backBufferLength: 120,
+            fragLoadingRetryDelay: 1000,
+            manifestLoadingRetryDelay: 1000
+          });
+          hls.loadSource(source);
+          hls.attachMedia(video);
+
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            buildQualityMenu();
+            showSpinner(false);
+          });
+
+          hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+            const level = hls.levels[data.level];
+            if (hls.autoLevelEnabled) setQualityLabelAuto();
+            else setQualityLabelFromLevel(level);
+          });
+
+          hls.on(Hls.Events.LEVEL_LOADED, () => {
+            updateTimeline();
+          });
+
+          hls.on(Hls.Events.ERROR, (_, data) => {
+            if (data.fatal) {
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                hls.startLoad();
+              } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                hls.recoverMediaError();
+              } else {
+                hls.destroy();
+              }
+            }
+          });
+        } else if (isNativeHls) {
+          video.src = source;
+          document.getElementById('qualityContainer').classList.add('hidden');
+        } else {
+          video.src = source;
+        }
+
+        video.addEventListener('loadedmetadata', () => {
+          showSpinner(false);
+          updateTimeline();
+        });
+
+        video.addEventListener('waiting', () => showSpinner(true));
+        video.addEventListener('playing', () => showSpinner(false));
+        video.addEventListener('pause', updatePlayIcons);
+        video.addEventListener('play', updatePlayIcons);
+        video.addEventListener('timeupdate', updateTimeline);
+        video.addEventListener('progress', updateTimeline);
+        video.addEventListener('seeking', () => { seeking = true; updateTimeline(); });
+        video.addEventListener('seeked', () => { seeking = false; updateTimeline(); hideControlsSoon(); });
+
+        playPause.addEventListener('click', () => video.paused ? video.play() : video.pause());
+        bigPlay.addEventListener('click', () => video.play());
+        muteBtn.addEventListener('click', () => { video.muted = !video.muted; updateMuteIcons(); });
+
+        volume.addEventListener('input', (e) => {
+          video.volume = parseFloat(e.target.value);
+          video.muted = video.volume === 0;
+          updateMuteIcons();
+          localStorage.setItem('as_vol', video.volume.toString());
+        });
+
+        let dragging = false;
+        seek.addEventListener('input', e => {
+          dragging = true;
+          seekTo(e.target.value);
+          updateTimeline();
+        });
+        seek.addEventListener('change', e => {
+          dragging = false;
+          seekTo(e.target.value);
+          updateTimeline();
+          hideControlsSoon();
+        });
+
+        goLiveBtn.addEventListener('click', () => {
+          if (hls && typeof hls.liveSyncPosition === 'number') {
+            video.currentTime = hls.liveSyncPosition;
+          } else {
+            const sk = getSeekable();
+            video.currentTime = sk.end;
+          }
+          video.play();
+          updateTimeline();
+        });
+
+        fsBtn.addEventListener('click', toggleFullscreen);
+        document.addEventListener('fullscreenchange', () => {
+          const fs = document.fullscreenElement != null;
+          iconEnterFs.classList.toggle('hidden', fs);
+          iconExitFs.classList.toggle('hidden', !fs);
+          hideControlsSoon();
+        });
+
+        if (!document.pictureInPictureEnabled) {
+          pipBtn.classList.add('hidden');
+        } else {
+          pipBtn.addEventListener('click', async () => {
+            try {
+              if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+              } else {
+                await video.requestPictureInPicture();
+              }
+            } catch (e) { /* ignore */ }
+          });
+        }
+
+        qualityBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleMenu();
+        });
+        document.addEventListener('click', () => {
+          if (menuOpen) toggleMenu(false);
+        });
+
+        playerWrapper.addEventListener('dblclick', toggleFullscreen);
+        window.addEventListener('keydown', (e) => {
+          if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) return;
+          if (e.code === 'Space') { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+          if (e.code === 'KeyM') { video.muted = !video.muted; updateMuteIcons(); }
+          if (e.code === 'ArrowLeft') { video.currentTime = Math.max(getSeekable().start, video.currentTime - 5); }
+          if (e.code === 'ArrowRight') { video.currentTime = Math.min(getSeekable().end, video.currentTime + 5); }
+          if (e.code === 'KeyF') { toggleFullscreen(); }
+          if (e.code === 'KeyL') { goLiveBtn.click(); }
+        });
+
+        ['mousemove','pointermove','touchstart','click','keydown'].forEach(evt => {
+          playerWrapper.addEventListener(evt, hideControlsSoon);
+        });
+        hideControlsSoon();
+
+        updatePlayIcons();
+      }
+
+      function buildQualityMenu() {
+        if (!hls) return;
+        qualityList.innerHTML = '';
+        const auto = document.createElement('button');
+        auto.className = itemClass(true);
+        auto.textContent = 'Auto';
+        auto.addEventListener('click', () => {
+          hls.currentLevel = -1;
+          setQualityLabelAuto();
+          toggleMenu(false);
+        });
+        qualityList.appendChild(auto);
+
+        const levels = [...hls.levels]
+          .map((l, i) => ({...l, index: i}))
+          .sort((a,b) => (b.height||0)-(a.height||0));
+        const seen = new Set();
+        levels.forEach(l => {
+          if (seen.has(l.height)) return;
+          seen.add(l.height);
+          const btn = document.createElement('button');
+          btn.className = itemClass(false);
+          const label = `${l.height}p ${l.frameRate?Math.round(l.frameRate)+'fps ':''}${l.bitrate?Math.round(l.bitrate/1000)+' kbps':''}`;
+          btn.textContent = label.trim();
+          btn.addEventListener('click', () => {
+            const idx = hls.levels.findIndex(x => x.height === l.height);
+            hls.currentLevel = idx;
+            setQualityLabelFromLevel(l);
+            toggleMenu(false);
+          });
+          qualityList.appendChild(btn);
+        });
+        setQualityLabelAuto();
+      }
+
+      function itemClass(primary) {
+        return `w-full text-left px-3 py-2 text-sm hover:bg-white/10 ${primary?'font-semibold':''}`;
+      }
+
+      function toggleMenu(force) {
+        if (force === false) {
+          qualityMenu.classList.add('hidden');
+          menuOpen = false;
+          hideControlsSoon();
+          return;
+        }
+        const willOpen = qualityMenu.classList.contains('hidden');
+        if (willOpen) {
+          qualityMenu.classList.remove('hidden');
+          menuOpen = true;
+          controls.classList.remove('controls-hidden');
+          controls.classList.add('controls-visible');
+          clearTimeout(controlsTimer);
+        } else {
+          qualityMenu.classList.add('hidden');
+          menuOpen = false;
+          hideControlsSoon();
+        }
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
